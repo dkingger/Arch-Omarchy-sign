@@ -1,0 +1,6 @@
+.pio/
+.vscode/
+__pycache__/
+*.pyc
+include/secrets.h
+host/config.json

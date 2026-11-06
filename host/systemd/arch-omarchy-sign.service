@@ -1,0 +1,14 @@
+[Unit]
+Description=Arch Omarchy Sign Theme Sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Projects/Arch-Omarchy-sign/host
+ExecStart=/usr/bin/python3 %h/Projects/Arch-Omarchy-sign/host/theme_sync.py --config %h/Projects/Arch-Omarchy-sign/host/config.json
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

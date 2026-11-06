@@ -1,0 +1,20 @@
+{
+  "esp32_base_url": "http://192.168.1.120",
+  "poll_interval_seconds": 2,
+  "theme_file_candidates": [
+    "~/.config/omarchy/theme/current",
+    "~/.config/omarchy/current-theme",
+    "~/.cache/omarchy/theme"
+  ],
+  "default_color": "#22c55e",
+  "fallback_dark_color": "#0ea5e9",
+  "fallback_light_color": "#f59e0b",
+  "brightness": 96,
+  "theme_color_map": {
+    "nord": "#88c0d0",
+    "catppuccin": "#f5c2e7",
+    "gruvbox": "#d79921",
+    "dracula": "#bd93f9",
+    "tokyonight": "#7aa2f7"
+  }
+}
