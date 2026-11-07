@@ -12,7 +12,7 @@ ESP32-C3 Super Mini project that drives a WS2812B LED strip and updates color ba
 ## Project structure
 
 - `src/main.cpp`: ESP32 firmware
-- `include/secrets.example.h`: Wi-Fi and LED settings template
+- `include/secrets.h`: Wi-Fi and LED settings
 - `host/theme_sync.py`: desktop theme watcher and color sender
 - `host/config.example.json`: color mapping and theme detection config
 - `host/systemd/arch-omarchy-sign.service`: optional user service
@@ -20,8 +20,7 @@ ESP32-C3 Super Mini project that drives a WS2812B LED strip and updates color ba
 ## 1) Firmware setup (ESP32-C3)
 
 1. Install PlatformIO (VS Code extension or CLI).
-2. Copy `include/secrets.example.h` to `include/secrets.h`.
-3. Edit values in `include/secrets.h`:
+2. Edit values in `include/secrets.h`:
    - `WIFI_SSID`, `WIFI_PASSWORD`
    - `LED_PIN`
    - `LED_COUNT` (set this to your strip length)

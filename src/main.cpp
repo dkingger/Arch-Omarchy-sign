@@ -7,7 +7,7 @@
 #if __has_include("secrets.h")
 #include "secrets.h"
 #else
-#error "Missing include/secrets.h. Copy include/secrets.example.h to include/secrets.h and fill values."
+#error "Missing include/secrets.h. Create it and fill Wi-Fi/LED values."
 #endif
 
 namespace {
