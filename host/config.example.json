@@ -9,12 +9,73 @@
   "default_color": "#22c55e",
   "fallback_dark_color": "#0ea5e9",
   "fallback_light_color": "#f59e0b",
+  "fallback_palette": {
+    "arch": "#0ea5e9",
+    "omarchy": "#22c55e"
+  },
+  "fallback_blink": {
+    "interval_seconds": 0.7,
+    "on": {
+      "arch": "#ff2d2d",
+      "omarchy": "#ffd400"
+    },
+    "off": {
+      "arch": "#150000",
+      "omarchy": "#151000"
+    }
+  },
   "brightness": 96,
+  "led_segments": {
+    "arch_1": [
+      0,
+      22
+    ],
+    "omarchy_1": [
+      23,
+      38
+    ],
+    "arch_2": [
+      39,
+      39
+    ],
+    "omarchy_2": [
+      40,
+      72
+    ],
+    "arch_3": [
+      73,
+      109
+    ]
+  },
   "theme_color_map": {
-    "nord": "#88c0d0",
-    "catppuccin": "#f5c2e7",
-    "gruvbox": "#d79921",
-    "dracula": "#bd93f9",
-    "tokyonight": "#7aa2f7"
+    "nord": {
+      "arch": "#88c0d0",
+      "omarchy": "#a3be8c"
+    },
+    "catppuccin": {
+      "arch": "#89b4fa",
+      "omarchy": "#f5c2e7"
+    },
+    "gruvbox": {
+      "arch": "#d79921",
+      "omarchy": "#8ec07c"
+    },
+    "dracula": {
+      "arch": "#8be9fd",
+      "omarchy": "#ff79c6"
+    },
+    "retro-82": {
+      "arch": "#F85525",
+      "omarchy": "#FAA968",
+      "omarchy_1": "#028391"
+    },
+    "synthwave": {
+      "arch": "#00dbff",
+      "omarchy": "#ff4fd8"
+    },
+    "tokyonight": {
+      "arch": "#7aa2f7",
+      "omarchy": "#9ece6a"
+    }
   }
 }

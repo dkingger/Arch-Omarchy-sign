@@ -6,6 +6,7 @@ ESP32-C3 Super Mini project that drives a WS2812B LED strip and updates color ba
 
 - ESP32 firmware with simple HTTP API (`POST /color`)
 - WS2812B strip control with configurable pin, LED count and brightness
+- Optional segmented LED coloring (different colors per logo/zone)
 - Linux host sync script that detects theme changes and pushes matching RGB color
 - `systemd --user` service example for always-on sync
 
@@ -53,7 +54,8 @@ cp config.example.json config.json
 
 2. Edit `host/config.json`:
    - Set `esp32_base_url` to your ESP32 IP, for example `http://192.168.1.120`
-   - Tune `theme_color_map`
+   - Tune `led_segments` to match your physical LED index ranges
+   - Tune `theme_color_map` (`arch` and `omarchy` can be different per theme)
    - If needed, adjust `theme_file_candidates` to your Omarchy theme path
 
 3. Run sync script manually:
@@ -82,8 +84,24 @@ curl -X POST http://ESP32_IP/color \
   -d '{"theme":"manual","r":255,"g":80,"b":20,"brightness":96}'
 ```
 
+Segmented example (two zones):
+
+```bash
+curl -X POST http://ESP32_IP/color \
+   -H 'Content-Type: application/json' \
+   -d '{
+      "theme":"manual",
+      "brightness":96,
+      "segments":[
+         {"name":"arch","start":0,"end":54,"r":14,"g":165,"b":233},
+         {"name":"omarchy","start":55,"end":109,"r":34,"g":197,"b":94}
+      ]
+   }'
+```
+
 ## Notes
 
 - `LED_COUNT` is intentionally configurable in `include/secrets.h` so you can set it later.
+- Segment ranges use inclusive indexes (`start` and `end` are both included).
 - If Omarchy theme is stored in a custom file, add that path to `theme_file_candidates`.
 - For long strips, use proper 5V power injection and consider a level shifter on data line.
