@@ -105,3 +105,51 @@ curl -X POST http://ESP32_IP/color \
 - Segment ranges use inclusive indexes (`start` and `end` are both included).
 - If Omarchy theme is stored in a custom file, add that path to `theme_file_candidates`.
 - For long strips, use proper 5V power injection and consider a level shifter on data line.
+
+## Startup and recovery
+
+On boot Arch lights pure blue and Omarchy pure green (at `LED_BRIGHTNESS`).
+Without Wi-Fi, only Arch blinks every 500 ms; Omarchy stays green. The ESP32
+keeps trying to connect without rebooting. Startup logo ranges are in
+`isArchLed()` in `src/main.cpp` and match the example host configuration.
+
+The host reads stock themes from `/usr/share/omarchy/themes`, user overlays
+from `~/.config/omarchy/themes`, and the generated active theme from
+`~/.local/state/omarchy/current/theme`. It also supports terminal palettes
+in Alacritty, Kitty and Ghostty files. Arch uses the dominant saturated color from the folder icon selected by
+`icons.theme`. If no usable PNG folder icon or Pillow is available, Arch uses
+the theme primary color (or blue, cyan, magenta, then foreground).
+Omarchy uses the theme accent color.
+Install Pillow with `sudo pacman -S python-pillow` on Arch Linux.
+Per-theme color mappings are used only when no theme color files are found. Themes without usable color files use steady fallback
+colors; set `fallback_blink.enabled` to `true` to restore warning blinking.
+
+Colors are resent every 10 seconds, so a rebooted ESP32 receives the current
+theme again. Set `resend_interval_seconds` to change this interval.
+
+Run host regression tests with `python3 -m unittest discover -s host -p 'test_*.py'`.
+
+## Turn off when the computer is offline
+
+The ESP32 turns the LEDs off after 15 seconds without a successful `POST /color`.
+The host's 10-second resend acts as a heartbeat. The next color update turns the
+sign on again. This also turns the sign off if the sync script stops, the computer
+sleeps, or the network is unavailable. Startup/Wi-Fi blinking stops after this
+timeout too, so the sign stays dark while the computer is off.
+Keep `resend_interval_seconds` below 15 seconds.
+`GET /health` reports `host_timed_out`; health checks do not keep the LEDs on.
+
+## Desktop color app
+
+The Qt Quick app in [`desktop/`](desktop/README.md) provides separate Arch and
+Omarchy color pickers, brightness, manual mode, automatic theme mode and off.
+Once installed, open **Arch Sign / Arch-skilt** from the launcher or run
+`arch-sign open`. Manual selections persist after the app closes and across
+logins until you choose **Follow theme**. The sync service must be running;
+after updating `host/theme_sync.py`, restart it with
+`systemctl --user restart arch-omarchy-sign.service`.
+
+The app and host exchange control/status JSON atomically under
+`~/.local/state/arch-sign/`. Deleting `control.json` restores automatic mode.
+Manual and off modes keep sending heartbeats, preserving the sign's behavior
+when the computer is shut down. The ESP32 firmware is unchanged by this app.

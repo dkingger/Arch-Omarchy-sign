@@ -3,6 +3,7 @@
 #include <WebServer.h>
 #include <Adafruit_NeoPixel.h>
 #include <ArduinoJson.h>
+#include "timing.h"
 
 #if __has_include("secrets.h")
 #include "secrets.h"
@@ -21,6 +22,10 @@ uint8_t currentG = 0;
 uint8_t currentB = 0;
 uint8_t currentBrightness = LED_BRIGHTNESS;
 String currentTheme = "unknown";
+// Host resends every 10 seconds; turn off after 15 seconds without updates.
+constexpr uint32_t kHostTimeoutMs = 15000;
+uint32_t lastHostUpdateAt = 0;
+bool hostTimedOut = false;
 bool segmentedMode = false;
 uint8_t segmentCount = 0;
 
@@ -47,12 +52,6 @@ bool applySegments(JsonArrayConst segments, uint8_t brightness, String& errorMes
     return false;
   }
 
-  strip.setBrightness(brightness);
-  strip.clear();
-
-  uint8_t parsedSegmentCount = 0;
-  bool hasPrimaryColor = false;
-
   for (JsonVariantConst segmentVariant : segments) {
     JsonObjectConst segment = segmentVariant.as<JsonObjectConst>();
     if (segment.isNull()) {
@@ -75,6 +74,18 @@ bool applySegments(JsonArrayConst segments, uint8_t brightness, String& errorMes
       return false;
     }
 
+  }
+
+  strip.setBrightness(brightness);
+  strip.clear();
+  bool hasPrimaryColor = false;
+  uint8_t parsedSegmentCount = 0;
+  for (JsonObjectConst segment : segments) {
+    const int start = segment["start"];
+    const int end = segment["end"];
+    const int r = segment["r"];
+    const int g = segment["g"];
+    const int b = segment["b"];
     if (!hasPrimaryColor) {
       currentR = static_cast<uint8_t>(r);
       currentG = static_cast<uint8_t>(g);
@@ -104,7 +115,7 @@ void sendJsonResponse(int statusCode, const JsonDocument& doc) {
 }
 
 void handleHealth() {
-  StaticJsonDocument<256> doc;
+  JsonDocument doc;
   doc["ok"] = true;
   doc["ip"] = WiFi.localIP().toString();
   doc["theme"] = currentTheme;
@@ -114,12 +125,13 @@ void handleHealth() {
   doc["brightness"] = currentBrightness;
   doc["mode"] = segmentedMode ? "segmented" : "solid";
   doc["segment_count"] = segmentCount;
+  doc["host_timed_out"] = hostTimedOut;
 
   sendJsonResponse(200, doc);
 }
 
 void handleSetColor() {
-  StaticJsonDocument<384> doc;
+  JsonDocument doc;
 
   if (!server.hasArg("plain")) {
     doc["ok"] = false;
@@ -128,7 +140,7 @@ void handleSetColor() {
     return;
   }
 
-  StaticJsonDocument<1536> input;
+  JsonDocument input;
   DeserializationError error = deserializeJson(input, server.arg("plain"));
   if (error) {
     doc["ok"] = false;
@@ -141,9 +153,13 @@ void handleSetColor() {
   const char* theme = input["theme"] | "manual";
   brightness = constrain(brightness, 0, 255);
 
-  currentTheme = theme;
-
   JsonArrayConst segments = input["segments"].as<JsonArrayConst>();
+  if (!input["segments"].isNull() && segments.isNull()) {
+    doc["ok"] = false;
+    doc["error"] = "'segments' must be an array";
+    sendJsonResponse(400, doc);
+    return;
+  }
   if (!segments.isNull()) {
     String segmentError;
     if (!applySegments(segments, static_cast<uint8_t>(brightness), segmentError)) {
@@ -164,6 +180,10 @@ void handleSetColor() {
     applyColor(static_cast<uint8_t>(r), static_cast<uint8_t>(g), static_cast<uint8_t>(b), static_cast<uint8_t>(brightness));
   }
 
+  currentTheme = theme;
+  lastHostUpdateAt = millis();
+  hostTimedOut = false;
+
   doc["ok"] = true;
   doc["theme"] = currentTheme;
   doc["r"] = currentR;
@@ -172,6 +192,7 @@ void handleSetColor() {
   doc["brightness"] = currentBrightness;
   doc["mode"] = segmentedMode ? "segmented" : "solid";
   doc["segment_count"] = segmentCount;
+  doc["host_timed_out"] = hostTimedOut;
   sendJsonResponse(200, doc);
 }
 
@@ -179,7 +200,7 @@ void setupServer() {
   server.on("/health", HTTP_GET, handleHealth);
   server.on("/color", HTTP_POST, handleSetColor);
   server.onNotFound([]() {
-    StaticJsonDocument<160> doc;
+    JsonDocument doc;
     doc["ok"] = false;
     doc["error"] = "Not found";
     sendJsonResponse(404, doc);
@@ -187,27 +208,33 @@ void setupServer() {
   server.begin();
 }
 
+// Inclusive ranges matching host/config.example.json. Adjust for rewired logos.
+bool isArchLed(uint16_t led) {
+  return led <= 22 || led == 39 || led >= 73;
+}
+
+void showStartup(bool archOn) {
+  strip.setBrightness(LED_BRIGHTNESS);
+  for (uint16_t led = 0; led < LED_COUNT; ++led) {
+    strip.setPixelColor(led, isArchLed(led)
+        ? strip.Color(0, 0, archOn ? 255 : 0)
+        : strip.Color(0, 255, 0));
+  }
+  strip.show();
+  currentTheme = "startup";
+  segmentedMode = true;
+  segmentCount = 5;
+}
+
 void connectWiFi() {
   WiFi.mode(WIFI_STA);
 #ifdef DEVICE_HOSTNAME
   WiFi.setHostname(DEVICE_HOSTNAME);
 #endif
+  WiFi.setAutoReconnect(true);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
-  const unsigned long startedAt = millis();
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(300);
-    Serial.print('.');
-    if (millis() - startedAt > 30000) {
-      Serial.println("\nWi-Fi timeout. Rebooting...");
-      ESP.restart();
-    }
-  }
-
-  Serial.println();
-  Serial.print("Connected. IP: ");
-  Serial.println(WiFi.localIP());
 }
+
 }  // namespace
 
 void setup() {
@@ -218,13 +245,42 @@ void setup() {
   strip.clear();
   strip.show();
 
+  showStartup(true);
   connectWiFi();
   setupServer();
-
-  // Startup indicator: soft green
-  applyColor(34, 197, 94, currentBrightness);
 }
 
 void loop() {
-  server.handleClient();
+  static bool wasConnected = false;
+  static uint32_t lastBlink = 0;
+  static uint32_t lastRetry = 0;
+  static bool archOn = true;
+  const uint32_t now = millis();
+  const bool connected = WiFi.status() == WL_CONNECTED;
+  if (!connected) {
+    if (!hostTimedOut && timerExpired(now, lastBlink, 500)) {
+      lastBlink = now;
+      archOn = !archOn;
+      showStartup(archOn);
+    }
+    if (timerExpired(now, lastRetry, 30000)) {
+      lastRetry = now;
+      WiFi.reconnect();
+    }
+  } else {
+    if (!wasConnected) {
+      if (!hostTimedOut) showStartup(true);
+      Serial.print("Connected. IP: ");
+      Serial.println(WiFi.localIP());
+    }
+    server.handleClient();
+  }
+  // Check after handling requests so a new heartbeat immediately restores light.
+  if (!hostTimedOut && timerExpired(millis(), lastHostUpdateAt, kHostTimeoutMs)) {
+    applyColor(0, 0, 0, currentBrightness);
+    currentTheme = "host-offline";
+    hostTimedOut = true;
+  }
+  wasConnected = connected;
+  delay(1);
 }

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import argparse
+from collections import Counter
+from functools import lru_cache
 import json
 import os
 import re
@@ -42,10 +44,10 @@ def detect_theme(config: Dict) -> Optional[str]:
         return normalize_theme(env_theme)
 
     omarchy_theme = run_command(["omarchy", "theme", "current"])
-    if omarchy_theme:
+    if omarchy_theme and normalize_theme(omarchy_theme) != "unknown":
         return normalize_theme(omarchy_theme)
 
-    for candidate in config.get("theme_file_candidates", []):
+    for candidate in ["~/.local/state/omarchy/current/theme.name", *config.get("theme_file_candidates", [])]:
         raw = read_text_if_exists(Path(candidate).expanduser())
         if raw:
             return normalize_theme(raw)
@@ -80,16 +82,17 @@ def parse_hex_color(value: str) -> Tuple[int, int, int]:
 
 def _extract_named_colors(text: str) -> Dict[str, Tuple[int, int, int]]:
     # Supports simple TOML/YAML-like lines such as: accent = "#ff00aa"
-    pattern = re.compile(r"([A-Za-z0-9_\-]+)\s*[:=]\s*[\"']?(#[0-9A-Fa-f]{6})[\"']?")
+    pattern = re.compile(r"([A-Za-z0-9_\-]+)\s*(?:[:=]|\s)\s*[\"']?(#[0-9A-Fa-f]{6})[\"']?")
     colors: Dict[str, Tuple[int, int, int]] = {}
     for match in pattern.finditer(text):
         key = match.group(1).strip().lower().replace("-", "_")
+        key = {"color2": "green", "color4": "blue", "color3": "yellow", "color5": "magenta", "color6": "cyan"}.get(key, key)
         colors[key] = parse_hex_color(match.group(2))
     return colors
 
 
 def _find_theme_directory(theme_slug: str, config: Dict) -> Optional[Path]:
-    roots = config.get("theme_roots", ["~/.config/omarchy/themes"])
+    roots = config.get("theme_roots", ["~/.config/omarchy/themes", "/usr/share/omarchy/themes", "~/.local/share/omarchy/themes"])
     candidates = {
         theme_slug,
         theme_slug.replace("-", "_"),
@@ -110,27 +113,22 @@ def _find_theme_directory(theme_slug: str, config: Dict) -> Optional[Path]:
 
 
 def _load_theme_named_colors(theme_slug: str, config: Dict) -> Dict[str, Tuple[int, int, int]]:
-    theme_dir = _find_theme_directory(theme_slug, config)
-    if theme_dir is None:
-        return {}
-
-    color_files = [
-        theme_dir / "colors.toml",
-        theme_dir / "colors.yaml",
-        theme_dir / "colors.yml",
-        theme_dir / "theme.toml",
-        theme_dir / "theme.yaml",
-        theme_dir / "theme.yml",
-    ]
-
-    colors: Dict[str, Tuple[int, int, int]] = {}
-    for file_path in color_files:
-        if not file_path.exists() or not file_path.is_file():
-            continue
-
-        text = file_path.read_text(encoding="utf-8", errors="ignore")
-        colors.update(_extract_named_colors(text))
-
+    # Merge stock colors, user overlays, then the generated active theme.
+    roots = config.get("theme_roots", ["~/.config/omarchy/themes", "/usr/share/omarchy/themes", "~/.local/share/omarchy/themes"])
+    directories = []
+    for root in reversed(roots):
+        directory = _find_theme_directory(theme_slug, {"theme_roots": [root]})
+        if directory:
+            directories.append(directory)
+    active = Path("~/.local/state/omarchy/current").expanduser()
+    if read_text_if_exists(active / "theme.name") == theme_slug:
+        directories.append(active / "theme")
+    colors = {}
+    for directory in directories:
+        for filename in ("alacritty.toml", "kitty.conf", "ghostty.conf", "theme.yml", "theme.yaml", "theme.toml", "colors.yml", "colors.yaml", "colors.toml"):
+            text = read_text_if_exists(directory / filename)
+            if text:
+                colors.update(_extract_named_colors(text))
     return colors
 
 
@@ -141,44 +139,15 @@ def _derive_palette_from_theme_colors(
     if not colors:
         return default_palette
 
-    arch = (
-        colors.get("arch")
-        or colors.get("accent")
-        or colors.get("primary")
-        or colors.get("blue")
-        or colors.get("magenta")
-        or colors.get("cyan")
-        or default_palette.get("arch")
-        or default_palette.get("solid")
-    )
-
-    omarchy = (
-        colors.get("omarchy")
-        or colors.get("green")
-        or colors.get("yellow")
-        or colors.get("orange")
-        or colors.get("red")
-        or colors.get("foreground")
-        or default_palette.get("omarchy")
-        or default_palette.get("solid")
-    )
-
-    if arch == omarchy:
-        omarchy = (
-            colors.get("yellow")
-            or colors.get("green")
-            or colors.get("magenta")
-            or colors.get("cyan")
-            or default_palette.get("omarchy")
-            or omarchy
-        )
-
-    solid = colors.get("solid") or colors.get("accent") or default_palette.get("solid")
-    return {
-        "solid": solid,
-        "arch": arch,
-        "omarchy": omarchy,
-    }
+    # Prefer an explicit primary color; Omarchy themes usually provide blue instead.
+    arch = (colors.get("primary") or colors.get("blue")
+            or colors.get("cyan") or colors.get("magenta")
+            or colors.get("foreground")
+            or default_palette["arch"])
+    omarchy = (colors.get("accent") or colors.get("blue")
+               or colors.get("magenta") or colors.get("cyan")
+               or default_palette["omarchy"])
+    return {"solid": arch, "arch": arch, "omarchy": omarchy}
 
 
 def _default_palette_for_theme(theme: str, config: Dict) -> Dict[str, Tuple[int, int, int]]:
@@ -202,6 +171,50 @@ def _default_palette_for_theme(theme: str, config: Dict) -> Dict[str, Tuple[int,
     return palette
 
 
+@lru_cache(maxsize=64)
+def _folder_image_color(path: str, modified_ns: int) -> Optional[Tuple[int, int, int]]:
+    # Cache by modification time so icon updates are picked up without restarting.
+    try:
+        from PIL import Image
+        with Image.open(path) as image:
+            pixels = image.convert("RGBA")
+            data = pixels.get_flattened_data() if hasattr(pixels, "get_flattened_data") else pixels.getdata()
+            colors = Counter((r, g, b) for r, g, b, alpha in data
+                             if alpha >= 240 and max(r, g, b) - min(r, g, b) >= 35)
+            if colors:
+                return colors.most_common(1)[0][0]
+    except (ImportError, OSError, ValueError):
+        pass
+    return None
+
+
+def folder_color(theme: str, config: Dict) -> Optional[Tuple[int, int, int]]:
+    roots = config.get("theme_roots", ["~/.config/omarchy/themes", "/usr/share/omarchy/themes", "~/.local/share/omarchy/themes"])
+    directories = []
+    active = Path("~/.local/state/omarchy/current").expanduser()
+    if read_text_if_exists(active / "theme.name") == theme:
+        directories.append(active / "theme")
+    for root in roots:
+        directory = _find_theme_directory(theme, {"theme_roots": [root]})
+        if directory:
+            directories.append(directory)
+    icon_theme = next((name for directory in directories
+                       if (name := read_text_if_exists(directory / "icons.theme"))), "Yaru-blue")
+    # Only accept a theme name, never a path supplied by a theme file.
+    if not re.fullmatch(r"[A-Za-z0-9_. -]+", icon_theme) or icon_theme in (".", ".."):
+        return None
+    for root in config.get("icon_roots", ["~/.local/share/icons", "~/.icons", "/usr/share/icons"]):
+        for size in ("48x48", "48x48@2x", "256x256", "24x24"):
+            path = Path(root).expanduser() / icon_theme / size / "places/folder.png"
+            try:
+                color = _folder_image_color(str(path), path.stat().st_mtime_ns)
+            except OSError:
+                continue
+            if color is not None:
+                return color
+    return None
+
+
 def choose_palette(theme: str, config: Dict) -> Tuple[Dict[str, Tuple[int, int, int]], str]:
     mapping: Dict[str, Any] = {k.lower(): v for k, v in config.get("theme_color_map", {}).items()}
     default_palette = _default_palette_for_theme(theme, config)
@@ -209,11 +222,10 @@ def choose_palette(theme: str, config: Dict) -> Tuple[Dict[str, Tuple[int, int, 
     theme_colors = _load_theme_named_colors(theme, config)
     if theme_colors:
         palette = _derive_palette_from_theme_colors(theme_colors, default_palette)
-        explicit_theme_entry = mapping.get(theme)
-        if isinstance(explicit_theme_entry, dict):
-            for name, hex_color in explicit_theme_entry.items():
-                if isinstance(hex_color, str):
-                    palette[name.lower()] = parse_hex_color(hex_color)
+        icon_color = folder_color(theme, config)
+        if icon_color is not None:
+            palette["arch"] = icon_color
+            palette["solid"] = icon_color
         return palette, "theme-files"
 
     palette = dict(default_palette)
@@ -332,6 +344,55 @@ def send_color(config: Dict, theme: str, palette: Dict[str, Tuple[int, int, int]
             raise RuntimeError(f"ESP32 replied with status {resp.status}")
 
 
+def control_directory(config: Dict) -> Path:
+    return Path(config.get("control_directory", "~/.local/state/arch-sign")).expanduser()
+
+
+def load_control(config: Dict) -> Dict:
+    path = control_directory(config) / "control.json"
+    if not path.exists():
+        return {"mode": "theme"}
+    control = load_config(path)
+    if control.get("mode") not in ("theme", "manual", "off"):
+        raise ValueError("Unknown sign control mode")
+    if control["mode"] == "manual":
+        for name in ("arch", "omarchy"):
+            parse_hex_color(control[name])
+        brightness = control.get("brightness")
+        if type(brightness) is not int or not 0 <= brightness <= 255:
+            raise ValueError("Manual brightness must be 0-255")
+    return control
+
+
+def resolve_control(config: Dict, control: Dict, theme: str):
+    effective_config = dict(config)
+    if control["mode"] == "manual":
+        arch = parse_hex_color(control["arch"])
+        omarchy = parse_hex_color(control["omarchy"])
+        effective_config["brightness"] = control["brightness"]
+        return effective_config, {"solid": arch, "arch": arch, "omarchy": omarchy}, "manual"
+    if control["mode"] == "off":
+        return effective_config, dict.fromkeys(("solid", "arch", "omarchy"), (0, 0, 0)), "off"
+    preset = control.get("theme_presets", {}).get(theme)
+    if preset is not None:
+        brightness = preset.get("brightness")
+        if type(brightness) is not int or not 0 <= brightness <= 255:
+            raise ValueError("Saved theme brightness must be 0-255")
+        arch, omarchy = parse_hex_color(preset["arch"]), parse_hex_color(preset["omarchy"])
+        effective_config["brightness"] = brightness
+        return effective_config, {"solid": arch, "arch": arch, "omarchy": omarchy}, "saved-theme"
+    palette, source = choose_palette(theme, config)
+    return effective_config, palette, source
+
+
+def write_status(config: Dict, status: Dict) -> None:
+    directory = control_directory(config)
+    directory.mkdir(parents=True, exist_ok=True)
+    temporary = directory / "status.json.tmp"
+    temporary.write_text(json.dumps(status), encoding="utf-8")
+    temporary.replace(directory / "status.json")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Sync desktop theme to ESP32 LED color")
     parser.add_argument("--config", default="config.json", help="Path to config JSON")
@@ -342,7 +403,8 @@ def main() -> None:
     poll_interval = float(config.get("poll_interval_seconds", 2))
     blink_interval = float(config.get("fallback_blink", {}).get("interval_seconds", poll_interval))
 
-    last_theme: Optional[str] = None
+    last_sent_at = 0.0
+    resend_interval = max(1.0, float(config.get("resend_interval_seconds", 10)))
     last_signature: Optional[str] = None
     last_blink_at = 0.0
     blink_phase = False
@@ -351,9 +413,10 @@ def main() -> None:
     while True:
         try:
             theme = detect_theme(config) or "unknown"
-            palette, source = choose_palette(theme, config)
+            control = load_control(config)
+            effective_config, palette, source = resolve_control(config, control, theme)
 
-            if source == "fallback":
+            if source == "fallback" and config.get("fallback_blink", {}).get("enabled", False):
                 now = time.monotonic()
                 if now - last_blink_at >= max(0.1, blink_interval):
                     blink_phase = not blink_phase
@@ -365,6 +428,7 @@ def main() -> None:
             signature = json.dumps(
                 {
                     "theme": theme,
+                    "brightness": effective_config.get("brightness", 96),
                     "source": source,
                     "palette": {
                         k: list(v) for k, v in sorted(effective_palette.items())
@@ -373,16 +437,24 @@ def main() -> None:
                 sort_keys=True,
             )
 
-            if signature != last_signature:
-                send_color(config, theme, effective_palette)
+            if signature != last_signature or time.monotonic() - last_sent_at >= resend_interval:
+                send_color(effective_config, theme if control["mode"] == "theme" else control["mode"], effective_palette)
                 print(f"[theme-sync] applied theme={theme} source={source} palette={effective_palette}")
                 last_signature = signature
-                last_theme = theme
+                last_sent_at = time.monotonic()
+                write_status(config, {"ok": True, "mode": control["mode"], "theme": theme,
+                                      "palette": effective_palette,
+                                      "brightness": effective_config.get("brightness", 96),
+                                      "updated_at": time.time()})
         except KeyboardInterrupt:
             print("\n[theme-sync] stopped")
             break
         except Exception as exc:
             print(f"[theme-sync] warning: {exc}")
+            try:
+                write_status(config, {"ok": False, "error": str(exc), "updated_at": time.time()})
+            except OSError as status_error:
+                print(f"[theme-sync] status warning: {status_error}")
 
         time.sleep(poll_interval)
 

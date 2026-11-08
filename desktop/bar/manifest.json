@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "local.arch-sign",
+  "name": "Arch Sign",
+  "version": "0.1.0",
+  "author": "johsdahl",
+  "description": "Open the Arch and Omarchy sign color controls",
+  "kinds": ["bar-widget"],
+  "entryPoints": {"barWidget": "BarWidget.qml"},
+  "barWidget": {
+    "displayName": "Arch Sign",
+    "description": "Open the sign color app",
+    "category": "Utilities",
+    "allowMultiple": false
+  }
+}

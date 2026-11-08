@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Arch Sign
+Name[da]=Arch-skilt
+Comment=Choose colors for your Arch and Omarchy sign
+Comment[da]=Vælg farver til dit Arch- og Omarchy-skilt
+Exec=arch-sign open
+Icon=arch-sign
+Terminal=false
+Categories=Utility;
+StartupWMClass=arch-sign

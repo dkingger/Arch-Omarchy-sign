@@ -1,6 +1,7 @@
 {
   "esp32_base_url": "http://192.168.1.120",
   "poll_interval_seconds": 2,
+  "resend_interval_seconds": 10,
   "theme_file_candidates": [
     "~/.config/omarchy/theme/current",
     "~/.config/omarchy/current-theme",
@@ -14,6 +15,7 @@
     "omarchy": "#22c55e"
   },
   "fallback_blink": {
+    "enabled": false,
     "interval_seconds": 0.7,
     "on": {
       "arch": "#ff2d2d",

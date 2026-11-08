@@ -4,6 +4,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
+Environment=PYTHONUNBUFFERED=1
 Type=simple
 WorkingDirectory=%h/Projects/Arch-Omarchy-sign/host
 ExecStart=/usr/bin/python3 %h/Projects/Arch-Omarchy-sign/host/theme_sync.py --config %h/Projects/Arch-Omarchy-sign/host/config.json
