@@ -48,7 +48,54 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+Return"; context: Qt.ApplicationShortcut; onActivated: { if (backend.mode === "manual") backend.apply() } }
     Connections {
         target: backend
+        function onSetupFinished(success) { if (success) setupDialog.close() }
         function onScreenPickFinished() { win.show(); win.raise(); win.requestActivate() }
+    }
+    Component.onCompleted: { if (!backend.configured) setupDialog.open() }
+    Dialog {
+        Material.theme: theme.light ? Material.Light : Material.Dark
+        Material.background: theme.colors.surface
+        Material.foreground: theme.colors.foreground
+        Material.roundedScale: theme.radius
+        background: Rectangle { color: theme.colors.surface; border.color: theme.colors.border; radius: theme.radius }
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.55) }
+        id: setupDialog
+        objectName: "setupDialog"
+        title: qsTr("Connect your sign")
+        anchors.centerIn: parent
+        width: Math.min(460, win.width - 48)
+        modal: true
+        closePolicy: backend.setupBusy ? Popup.NoAutoClose : Popup.CloseOnEscape
+        ColumnLayout {
+            anchors.fill: parent; spacing: 12
+            Label {
+                Layout.fillWidth: true; wrapMode: Text.Wrap
+                text: qsTr("Enter your ESP32 address. Setup starts the background service automatically at login.")
+            }
+            TextField {
+                id: address
+                Layout.fillWidth: true
+                placeholderText: "http://192.168.1.120"
+                text: backend.deviceUrl || "http://"
+                enabled: !backend.setupBusy
+            }
+            CheckBox {
+                id: barShortcut
+                text: qsTr("Add an icon beside the Omarchy clock")
+                enabled: !backend.setupBusy
+            }
+            Label { Layout.fillWidth: true; wrapMode: Text.Wrap; text: backend.notice; visible: text !== "" }
+            RowLayout {
+                Layout.fillWidth: true
+                Button { text: qsTr("Cancel"); enabled: !backend.setupBusy; onClicked: setupDialog.close() }
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: backend.setupBusy ? qsTr("Setting up…") : qsTr("Save and connect")
+                    enabled: !backend.setupBusy; highlighted: true
+                    onClicked: backend.configureDevice(address.text, barShortcut.checked)
+                }
+            }
+        }
     }
     ColorDialog {
         id: picker
@@ -62,6 +109,12 @@ ApplicationWindow {
         }
     }
     Dialog {
+        Material.theme: theme.light ? Material.Light : Material.Dark
+        Material.background: theme.colors.surface
+        Material.foreground: theme.colors.foreground
+        Material.roundedScale: theme.radius
+        background: Rectangle { color: theme.colors.surface; border.color: theme.colors.border; radius: theme.radius }
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.55) }
         id: discard
         title: qsTr("Discard unapplied changes?")
         anchors.centerIn: parent
@@ -69,6 +122,12 @@ ApplicationWindow {
         onDiscarded: win.runAction(win.pendingAction)
     }
     Dialog {
+        Material.theme: theme.light ? Material.Light : Material.Dark
+        Material.background: theme.colors.surface
+        Material.foreground: theme.colors.foreground
+        Material.roundedScale: theme.radius
+        background: Rectangle { color: theme.colors.surface; border.color: theme.colors.border; radius: theme.radius }
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.55) }
         id: help
         objectName: "helpDialog"
         title: qsTr("Keyboard shortcuts")
@@ -93,6 +152,7 @@ ApplicationWindow {
                 Label { text: qsTr("A little light. Your own atmosphere."); color: theme.colors.secondary; font.pixelSize: 13 }
             }
             Item { Layout.fillWidth: true }
+            Button { text: qsTr("Connection"); flat: true; onClicked: setupDialog.open() }
             Rectangle {
                 implicitWidth: modeLabel.implicitWidth + 28; implicitHeight: 32
                 color: theme.colors.surface; radius: theme.radius; border.color: theme.colors.border

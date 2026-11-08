@@ -45,5 +45,16 @@
   "The color picker returned an invalid color.": "Farvevælgeren returnerede en ugyldig farve.",
   "Color picking cancelled.": "Farvevalget er annulleret.",
   "Install hyprpicker to pick desktop colors.": "Installér hyprpicker for at vælge farver på skrivebordet.",
-  "Click a pixel on the desktop. Press Esc to cancel.": "Klik på en pixel på skrivebordet. Tryk Esc for at annullere."
+  "Click a pixel on the desktop. Press Esc to cancel.": "Klik på en pixel på skrivebordet. Tryk Esc for at annullere.",
+  "Connect your sign": "Forbind dit skilt",
+  "Enter your ESP32 address. Setup starts the background service automatically at login.": "Indtast ESP32-adressen. Opsætningen starter baggrundstjenesten automatisk ved login.",
+  "Add an icon beside the Omarchy clock": "Tilføj et ikon ved Omarchy-uret",
+  "Cancel": "Annuller",
+  "Setting up…": "Sætter op…",
+  "Save and connect": "Gem og forbind",
+  "Connection": "Forbindelse",
+  "Enter an address like http://192.168.1.120": "Indtast en adresse som http://192.168.1.120",
+  "Setup complete. Waiting for the sign…": "Opsætningen er klar. Venter på skiltet…",
+  "Setup failed: %1": "Opsætningen mislykkedes: %1",
+  "Could not start setup. Reinstall the Arch Sign package.": "Kunne ikke starte opsætningen. Geninstallér Arch Sign-pakken."
 }

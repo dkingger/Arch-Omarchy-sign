@@ -29,7 +29,8 @@ The app hides while you click a desktop pixel and returns with that color in
 the selected logo field. Esc cancels without changing the color. Apply the
 colors or save them to the theme afterward. Hyprpicker is a package dependency.
 
-The original Wi-Fi settings and `host/config.json` are not edited by the app.
+Device settings live in `~/.config/arch-sign/config.json`; the Connection
+dialog updates its address. Firmware Wi-Fi credentials remain separate.
 If you set `control_directory` in the host configuration, the default GUI path
 must be adjusted accordingly; the supplied setup uses the default directory.
 
@@ -59,8 +60,8 @@ default browser. Both controls also support keyboard focus.
 ```
 
 Qt 6 base, declarative and Wayland packages, qmake6, make and GCC are required.
-The package installs the binary, desktop entry and icon. The Python background
-service is provided by the parent project and must be installed separately.
+The package installs the binary, desktop entry and icon. The package also installs the Python background service and its dependencies.
+On first launch, enter your ESP32 address to enable the service automatically.
 
 ## Saved theme colors
 

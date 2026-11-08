@@ -7,6 +7,7 @@
 #include <QDateTime>
 #include <QRegularExpression>
 #include <QStandardPaths>
+#include <QUrl>
 
 static QJsonObject readObject(const QString &path) {
     QFile file(path);
@@ -16,6 +17,27 @@ static QJsonObject readObject(const QString &path) {
 
 Backend::Backend(QString directory, QObject *parent, QString pickerExecutable) : QObject(parent),
     m_directory(directory.isEmpty() ? QDir::homePath() + "/.local/state/arch-sign" : directory) {
+    m_configFile = directory.isEmpty() ? QDir::homePath() + "/.config/arch-sign/config.json"
+                                      : m_directory + "/config.json";
+    m_setupTimeout.setSingleShot(true); m_setupTimeout.setInterval(90000);
+    connect(&m_setupTimeout, &QTimer::timeout, this, [this] { m_setup.kill(); });
+    connect(&m_setup, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart && m_setupBusy) {
+            m_setupBusy = false; m_setupTimeout.stop();
+            m_notice = tr("Could not start setup. Reinstall the Arch Sign package.");
+            emit changed(); emit setupFinished(false);
+        }
+    });
+    connect(&m_setup, &QProcess::finished, this, [this](int code, QProcess::ExitStatus exitStatus) {
+        if (!m_setupBusy) return;
+        m_setupBusy = false; m_setupTimeout.stop();
+        const auto result = QJsonDocument::fromJson(m_setup.readAllStandardOutput()).object();
+        const bool ok = code == 0 && exitStatus == QProcess::NormalExit && result.value("ok").toBool();
+        const auto error = result.value("error").toString(QString::fromUtf8(m_setup.readAllStandardError()));
+        refresh();
+        m_notice = ok ? tr("Setup complete. Waiting for the sign…") : tr("Setup failed: %1").arg(error);
+        emit changed(); emit setupFinished(ok);
+    });
     m_pickerExecutable = pickerExecutable.isEmpty() ? QStandardPaths::findExecutable("hyprpicker") : pickerExecutable;
     m_pickerTimeout.setSingleShot(true);
     m_pickerTimeout.setInterval(120000);
@@ -44,9 +66,23 @@ Backend::Backend(QString directory, QObject *parent, QString pickerExecutable) :
 }
 
 Backend::~Backend() {
+    if (m_setup.state() != QProcess::NotRunning) { m_setup.kill(); m_setup.waitForFinished(1000); }
     if (m_picker.state() != QProcess::NotRunning) {
         m_picker.kill(); m_picker.waitForFinished(1000);
     }
+}
+
+bool Backend::configureDevice(const QString &value, bool bar) {
+    if (m_setupBusy) return false;
+    const QUrl url(value.trimmed());
+    if (!url.isValid() || (url.scheme() != "http" && url.scheme() != "https") || url.host().isEmpty()) {
+        m_notice = tr("Enter an address like http://192.168.1.120"); emit changed(); return false;
+    }
+    m_setupBusy = true; m_notice.clear(); emit changed();
+    QStringList arguments{"--url", value.trimmed(), "--json"};
+    if (bar) arguments << "--bar";
+    m_setup.start("arch-sign-setup", arguments); m_setupTimeout.start();
+    return true;
 }
 
 void Backend::finishScreenPick(const QString &message) {
@@ -167,6 +203,7 @@ bool Backend::followTheme() { return save({{"mode", "theme"}}); }
 bool Backend::turnOff() { return save({{"mode", "off"}}); }
 
 void Backend::refresh() {
+    m_deviceUrl = readObject(m_configFile).value("esp32_base_url").toString();
     const auto status = readObject(m_directory + "/status.json");
     QString text;
     const auto age = QDateTime::currentSecsSinceEpoch() - status.value("updated_at").toDouble();

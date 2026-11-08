@@ -2,4 +2,10 @@
 set -eu
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cd "$ROOT/pkgbuild"
-exec makepkg -fsi "$@"
+makepkg -fsi "$@"
+LEGACY="$ROOT/../host/config.json"
+if [ -f "$LEGACY" ] && [ ! -f "$HOME/.config/arch-sign/config.json" ]; then
+  DEVICE_URL="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["esp32_base_url"])' "$LEGACY")"
+  arch-sign-setup --url "$DEVICE_URL" --migrate-config "$LEGACY" --json
+fi
+printf '\nInstalled. Open Arch Sign from your launcher to configure the ESP32 address.\n'

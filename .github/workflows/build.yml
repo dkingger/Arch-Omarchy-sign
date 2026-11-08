@@ -1,0 +1,29 @@
+name: Build and test
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  arch-package:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - name: Install build and runtime dependencies
+        run: pacman -Syu --noconfirm git qt6-base qt6-declarative qt6-wayland qt6-svg hyprpicker python python-pillow
+      - uses: actions/checkout@v4
+      - name: Create unprivileged builder
+        run: |
+          useradd -m builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+      - name: Build, test and package
+        run: |
+          runuser -u builder -- sh -c 'cd "$1" && desktop/bin/build && QT_QUICK_BACKEND=software desktop/bin/test && python3 -m unittest discover -s host -p "test_*.py" && g++ -std=c++11 -Iinclude tests/timing_test.cpp -o /tmp/timing-test && /tmp/timing-test && cd desktop/pkgbuild && makepkg --noconfirm' sh "$GITHUB_WORKSPACE"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arch-sign-package-x86_64
+          path: desktop/pkgbuild/arch-sign-[0-9]*-x86_64.pkg.tar.zst
+          if-no-files-found: error

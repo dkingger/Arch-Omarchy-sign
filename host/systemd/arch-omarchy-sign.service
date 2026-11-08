@@ -2,12 +2,11 @@
 Description=Arch Omarchy Sign Theme Sync
 After=network-online.target
 Wants=network-online.target
+ConditionPathExists=%h/.config/arch-sign/config.json
 
 [Service]
 Environment=PYTHONUNBUFFERED=1
-Type=simple
-WorkingDirectory=%h/Projects/Arch-Omarchy-sign/host
-ExecStart=/usr/bin/python3 %h/Projects/Arch-Omarchy-sign/host/theme_sync.py --config %h/Projects/Arch-Omarchy-sign/host/config.json
+ExecStart=/usr/bin/python3 /usr/lib/arch-sign/theme_sync.py --config %h/.config/arch-sign/config.json
 Restart=on-failure
 RestartSec=5
 

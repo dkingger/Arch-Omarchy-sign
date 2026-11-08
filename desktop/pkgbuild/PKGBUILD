@@ -1,10 +1,12 @@
 pkgname=arch-sign
-pkgver=0.1.0
-pkgrel=11
-pkgdesc='Color control for the Arch Omarchy LED sign'
+pkgver=0.2.0
+pkgrel=1
+pkgdesc='Desktop controls and theme sync for the Arch Omarchy LED sign'
+url='https://github.com/dkingger/Arch-Omarchy-sign'
+options=('!debug')
 arch=('x86_64' 'aarch64')
 license=('MIT')
-depends=('qt6-base' 'qt6-declarative' 'qt6-wayland' 'hyprpicker' 'qt6-svg')
+depends=('qt6-base' 'qt6-declarative' 'qt6-wayland' 'hyprpicker' 'qt6-svg' 'python' 'python-pillow' 'systemd')
 makedepends=('gcc' 'make')
 source=()
 sha256sums=()
@@ -15,6 +17,15 @@ build() {
 package() {
   cd "$startdir/.."
   install -Dm755 build/arch-sign "$pkgdir/usr/bin/arch-sign"
+  install -Dm644 ../host/theme_sync.py "$pkgdir/usr/lib/arch-sign/theme_sync.py"
+  install -Dm755 ../host/setup.py "$pkgdir/usr/lib/arch-sign/setup.py"
+  ln -s /usr/lib/arch-sign/setup.py "$pkgdir/usr/bin/arch-sign-setup"
+  install -Dm644 ../host/config.example.json "$pkgdir/usr/share/arch-sign/config.example.json"
+  install -Dm644 ../host/systemd/arch-omarchy-sign.service "$pkgdir/usr/lib/systemd/user/arch-omarchy-sign.service"
+  install -Dm644 ../host/systemd/arch-omarchy-sign.service "$pkgdir/usr/share/arch-sign/arch-omarchy-sign.service"
+  install -dm755 "$pkgdir/usr/share/arch-sign/bar"
+  cp -r bar/. "$pkgdir/usr/share/arch-sign/bar/"
+
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm644 pkgbuild/arch-sign.desktop "$pkgdir/usr/share/applications/arch-sign.desktop"
   install -Dm644 pkgbuild/arch-sign.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/arch-sign.svg"

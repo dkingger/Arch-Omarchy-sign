@@ -140,6 +140,9 @@ private slots:
         engine.load(QUrl("qrc:/Main.qml"));
         QVERIFY(!engine.rootObjects().isEmpty());
         auto root = engine.rootObjects().first();
+        auto setup = root->findChild<QObject *>("setupDialog");
+        QVERIFY(setup); QVERIFY(setup->property("visible").toBool());
+        QVERIFY(QMetaObject::invokeMethod(setup, "close"));
         auto shortcuts = root->findChild<QObject *>("shortcutsButton");
         auto help = root->findChild<QObject *>("helpDialog");
         QVERIFY(shortcuts); QVERIFY(help);

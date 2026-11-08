@@ -19,14 +19,19 @@
 
 int main(int argc, char **argv) {
     const QString command = argc > 1 ? QString::fromLocal8Bit(argv[1]) : "open";
-    const bool preview = command == "preview";
+    const bool preview = command == "preview" || command == "preview-setup";
     if (command != "open") qputenv("QT_QPA_PLATFORM", "offscreen");
     QGuiApplication app(argc, argv);
     app.setApplicationName("arch-sign");
-    app.setApplicationVersion("0.1.0");
+    app.setApplicationVersion("0.2.0");
     app.setDesktopFileName("arch-sign");
     QTemporaryDir scratch;
     if (preview) {
+        if (command != "preview-setup") {
+            QFile config(scratch.path() + "/config.json");
+            if (!config.open(QIODevice::WriteOnly)) return 1;
+            config.write("{\"esp32_base_url\":\"http://192.0.2.1\"}"); config.close();
+        }
         QFile file(scratch.path() + "/status.json");
         if (!file.open(QIODevice::WriteOnly)) return 1;
         file.write(QJsonDocument(QJsonObject{{"ok", true}, {"mode", "theme"}, {"theme", "Nord"},

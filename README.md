@@ -1,155 +1,132 @@
-# Arch-Omarchy-sign
+# Arch Sign
 
-ESP32-C3 Super Mini project that drives a WS2812B LED strip and updates color based on the active desktop theme on your computer.
+![Arch Sign desktop app](desktop/docs/screenshot.png)
 
-## Features
+Control a backlit Arch/Omarchy sign from your Omarchy desktop. Follow the active
+theme, choose separate colors for the two logos, pick a color from the screen,
+and save your favorite colors and brightness per theme.
 
-- ESP32 firmware with simple HTTP API (`POST /color`)
-- WS2812B strip control with configurable pin, LED count and brightness
-- Optional segmented LED coloring (different colors per logo/zone)
-- Linux host sync script that detects theme changes and pushes matching RGB color
-- `systemd --user` service example for always-on sync
+## Install on Arch Linux / Omarchy
 
-## Project structure
+Install the `arch-sign-0.2.0-1-x86_64.pkg.tar.zst` package from the release:
 
-- `src/main.cpp`: ESP32 firmware
-- `include/secrets.h`: Wi-Fi and LED settings
-- `host/theme_sync.py`: desktop theme watcher and color sender
-- `host/config.example.json`: color mapping and theme detection config
-- `host/systemd/arch-omarchy-sign.service`: optional user service
-
-## 1) Firmware setup (ESP32-C3)
-
-1. Install PlatformIO (VS Code extension or CLI).
-2. Edit values in `include/secrets.h`:
-   - `WIFI_SSID`, `WIFI_PASSWORD`
-   - `LED_PIN`
-   - `LED_COUNT` (set this to your strip length)
-   - `LED_BRIGHTNESS`
-4. Wire strip:
-   - ESP32 `GND` -> LED strip `GND`
-   - ESP32 data pin (`LED_PIN`) -> LED strip `DIN`
-   - External 5V supply -> LED strip `5V` (recommended for many LEDs)
-   - Share ground between ESP32 and strip power supply
-
-### Build and upload
-
-```bash
-cd /home/johsdahl/Projects/Arch-Omarchy-sign
-pio run
-pio run -t upload
-pio device monitor
+```sh
+sudo pacman -U ./arch-sign-0.2.0-1-x86_64.pkg.tar.zst
 ```
 
-After boot, note the ESP32 IP shown in serial output.
+Pacman installs the runtime dependencies. The package includes the desktop app,
+Python sync script, systemd user service, configuration template and optional
+Omarchy bar shortcut. Open **Arch Sign** from `Super+Space`, enter the ESP32's
+address (for example `http://192.168.1.120`), and click **Save and connect**.
+The background service starts now and automatically at future logins.
 
-## 2) Host sync setup (Linux desktop)
+To build from a source checkout or release source archive:
 
-1. Copy config template:
-
-```bash
-cd /home/johsdahl/Projects/Arch-Omarchy-sign/host
-cp config.example.json config.json
+```sh
+./install.sh
 ```
 
-2. Edit `host/config.json`:
-   - Set `esp32_base_url` to your ESP32 IP, for example `http://192.168.1.120`
-   - Tune `led_segments` to match your physical LED index ranges
-   - Tune `theme_color_map` (`arch` and `omarchy` can be different per theme)
-   - If needed, adjust `theme_file_candidates` to your Omarchy theme path
+This installs Arch's build tools, builds and installs the package, and migrates
+an existing `host/config.json` if present. Then open the app to complete setup.
+Run the installer as your normal user; it requests sudo only for package changes.
+The initial prebuilt package targets x86_64. Other platforms are not validated.
 
-3. Run sync script manually:
+## Using the app
 
-```bash
-python3 /home/johsdahl/Projects/Arch-Omarchy-sign/host/theme_sync.py --config /home/johsdahl/Projects/Arch-Omarchy-sign/host/config.json
+- **Follow theme** uses the theme's folder icon color for Arch and accent color
+  for Omarchy, unless you saved a custom palette for that theme.
+- **Own colors** enables separate logo color pickers, hex fields and desktop
+  pipettes. Click **Apply manual colors** to send them to the sign.
+- **Save to theme: …** stores both colors and brightness for the active theme.
+- **Reset theme: …** removes only that theme's saved palette and returns to
+  automatic theme colors.
+- **Turn off** keeps the sign dark until you select a lighting mode again.
+- **Connection** changes the ESP32 address and optionally adds an icon beside
+  the Omarchy clock. The app follows Omarchy's full palette and language live.
+
+The GUI can be closed while the background service keeps working. The host
+resends every 10 seconds. The firmware turns the LEDs off after 15 seconds
+without updates, including when the computer shuts down or sleeps. Startup is
+blue for Arch and green for Omarchy; without Wi-Fi Arch blinks until that timeout.
+
+## Hardware and firmware
+
+This release's desktop package works with the ESP32-C3 firmware in this repo.
+ESP32 firmware setup is still a separate hardware step: Wi-Fi credentials, LED
+pin, LED count, wiring and segment ranges depend on your sign. Release assets
+never contain firmware built with private Wi-Fi credentials.
+
+1. Copy `include/secrets.example.h` to `include/secrets.h`.
+2. Set your Wi-Fi name/password, data pin, LED count and brightness.
+3. Install PlatformIO and build/upload:
+
+   ```sh
+   pio run
+   pio run -t upload
+   pio device monitor
+   ```
+
+PlatformIO detects the serial port; pass `--upload-port /dev/ttyACM0` if needed.
+The ESP32 prints its IP address after connecting to Wi-Fi.
+
+Connect the strip's `DIN` to `LED_PIN`, and share ground with the ESP32 and 5V
+strip supply. The example configuration has 110 LEDs, with inclusive ranges:
+
+| Zone | LED indices |
+|---|---|
+| Arch | 0–22, 39, 73–109 |
+| Omarchy | 23–38, 40–72 |
+
+For a different layout, edit `led_segments` in your user config and the startup
+ranges in `isArchLed()` in `src/main.cpp`. Use a suitable external power supply
+and power injection for the strip; a data level shifter may be needed.
+The provided secrets file is a template, not preconfigured hardware settings.
+
+## Configuration, migration and troubleshooting
+
+- Device and segment settings: `~/.config/arch-sign/config.json`.
+- Manual choices and saved theme palettes: `~/.local/state/arch-sign/control.json`.
+- Last delivery result: `~/.local/state/arch-sign/status.json`.
+- Existing saved palettes survive upgrades. Setup backs up an existing device
+  config and legacy user service before changing them.
+
+To migrate a checkout-based installation manually, preserving LED segments:
+
+```sh
+arch-sign-setup --url http://YOUR_ESP32_IP --migrate-config /path/to/old/host/config.json
 ```
 
-When theme changes, script sends a new RGB color to the ESP32.
+If a new user config already exists, setup preserves it rather than importing
+the old one again. Change the address in the app's **Connection** dialog.
+Advanced config edits require restarting the service.
 
-## 3) Optional: run as systemd user service
-
-```bash
-mkdir -p ~/.config/systemd/user
-cp /home/johsdahl/Projects/Arch-Omarchy-sign/host/systemd/arch-omarchy-sign.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now arch-omarchy-sign.service
+```sh
 systemctl --user status arch-omarchy-sign.service
+systemctl --user restart arch-omarchy-sign.service
+journalctl --user -u arch-omarchy-sign.service -n 30
+arch-sign status --json
 ```
 
-## API quick test
+If the service is stopped or the sign is unreachable, the app shows a connection
+error. The setup dialog saves the address and starts the service; delivery is
+confirmed separately by the app's connection status.
 
-```bash
-curl -X POST http://ESP32_IP/color \
-  -H 'Content-Type: application/json' \
-  -d '{"theme":"manual","r":255,"g":80,"b":20,"brightness":96}'
+The optional bar shortcut requires the newer Omarchy shell. No theme files are
+modified. Saved palettes and other user settings are not removed by uninstall.
+Remove the optional bar icon with `omarchy plugin disable local.arch-sign`, then
+stop the service and uninstall with `sudo pacman -Rns arch-sign`.
+
+## Development and release
+
+```sh
+desktop/bin/build
+desktop/bin/test
+python3 -m unittest discover -s host -p 'test_*.py'
+g++ -std=c++11 -Iinclude tests/timing_test.cpp -o /tmp/sign-timing-test
+/tmp/sign-timing-test
 ```
 
-Segmented example (two zones):
-
-```bash
-curl -X POST http://ESP32_IP/color \
-   -H 'Content-Type: application/json' \
-   -d '{
-      "theme":"manual",
-      "brightness":96,
-      "segments":[
-         {"name":"arch","start":0,"end":54,"r":14,"g":165,"b":233},
-         {"name":"omarchy","start":55,"end":109,"r":34,"g":197,"b":94}
-      ]
-   }'
-```
-
-## Notes
-
-- `LED_COUNT` is intentionally configurable in `include/secrets.h` so you can set it later.
-- Segment ranges use inclusive indexes (`start` and `end` are both included).
-- If Omarchy theme is stored in a custom file, add that path to `theme_file_candidates`.
-- For long strips, use proper 5V power injection and consider a level shifter on data line.
-
-## Startup and recovery
-
-On boot Arch lights pure blue and Omarchy pure green (at `LED_BRIGHTNESS`).
-Without Wi-Fi, only Arch blinks every 500 ms; Omarchy stays green. The ESP32
-keeps trying to connect without rebooting. Startup logo ranges are in
-`isArchLed()` in `src/main.cpp` and match the example host configuration.
-
-The host reads stock themes from `/usr/share/omarchy/themes`, user overlays
-from `~/.config/omarchy/themes`, and the generated active theme from
-`~/.local/state/omarchy/current/theme`. It also supports terminal palettes
-in Alacritty, Kitty and Ghostty files. Arch uses the dominant saturated color from the folder icon selected by
-`icons.theme`. If no usable PNG folder icon or Pillow is available, Arch uses
-the theme primary color (or blue, cyan, magenta, then foreground).
-Omarchy uses the theme accent color.
-Install Pillow with `sudo pacman -S python-pillow` on Arch Linux.
-Per-theme color mappings are used only when no theme color files are found. Themes without usable color files use steady fallback
-colors; set `fallback_blink.enabled` to `true` to restore warning blinking.
-
-Colors are resent every 10 seconds, so a rebooted ESP32 receives the current
-theme again. Set `resend_interval_seconds` to change this interval.
-
-Run host regression tests with `python3 -m unittest discover -s host -p 'test_*.py'`.
-
-## Turn off when the computer is offline
-
-The ESP32 turns the LEDs off after 15 seconds without a successful `POST /color`.
-The host's 10-second resend acts as a heartbeat. The next color update turns the
-sign on again. This also turns the sign off if the sync script stops, the computer
-sleeps, or the network is unavailable. Startup/Wi-Fi blinking stops after this
-timeout too, so the sign stays dark while the computer is off.
-Keep `resend_interval_seconds` below 15 seconds.
-`GET /health` reports `host_timed_out`; health checks do not keep the LEDs on.
-
-## Desktop color app
-
-The Qt Quick app in [`desktop/`](desktop/README.md) provides separate Arch and
-Omarchy color pickers, brightness, manual mode, automatic theme mode and off.
-Once installed, open **Arch Sign / Arch-skilt** from the launcher or run
-`arch-sign open`. Manual selections persist after the app closes and across
-logins until you choose **Follow theme**. The sync service must be running;
-after updating `host/theme_sync.py`, restart it with
-`systemctl --user restart arch-omarchy-sign.service`.
-
-The app and host exchange control/status JSON atomically under
-`~/.local/state/arch-sign/`. Deleting `control.json` restores automatic mode.
-Manual and off modes keep sending heartbeats, preserving the sign's behavior
-when the computer is shut down. The ESP32 firmware is unchanged by this app.
+See [desktop documentation](desktop/README.md), [release notes](CHANGELOG.md)
+and [release process](RELEASING.md). GitHub Actions builds and tests an Arch
+package from a clean container. Built firmware containing your credentials and
+local configuration must never be attached to a release.
